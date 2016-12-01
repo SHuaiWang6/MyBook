@@ -1,0 +1,692 @@
+using Abp.AutoMapper;
+using Abp.UI;
+using Abp.Web.Models;
+using Abp.WebApi.Authorization;
+using Abp.WebApi.Controllers;
+using JG.PeiXun.Api.Models;
+using JG.PeiXun.Api.Models.Class;
+using JG.PeiXun.Api.Models.TrainCourse;
+using JG.PeiXun.Classes;
+using JG.PeiXun.Collects;
+using JG.PeiXun.Evaluations;
+using JG.PeiXun.Helper;
+using JG.PeiXun.Praises;
+using JG.PeiXun.Resources;
+using JG.PeiXun.TrainCourses;
+using JG.PeiXun.TrainCourses.Dto;
+using JG.PeiXun.Users;
+using JG.PeiXun.Utils.BaiDuBCE;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Web.Http;
+using System.Web.Script.Serialization;
+using JG.PeiXun.LiveVideos;
+
+namespace JG.PeiXun.Api.Controllers
+{
+
+    public class TrainCourseController : PeiXunApiControllerBase
+    {
+        private readonly ITrainCoursesAppService _trainCoursesAppService;
+        private readonly IEvaluationsAppService _evaluationsAppService;
+        private readonly IResourcesAppService _resourcesAppService;
+        private readonly IClassesAppService _classesAppService;
+        private readonly ICollectsAppService _collectAppService;
+        private readonly IPraisesAppService _praisesAppService;
+        private readonly IUploadHelper _uploadHelper;
+        private readonly ILiveVideosAppService _liveVideosAppService;
+        public TrainCourseController(ITrainCoursesAppService trainCoursesAppService,
+            IEvaluationsAppService evaluationsAppService,
+            IClassesAppService classesAppService,
+            IResourcesAppService resourcesAppService,
+            ICollectsAppService collectAppService,
+            IPraisesAppService praisesAppService,
+            ILiveVideosAppService liveVideosAppService,
+            IUploadHelper uploadHelper)
+        {
+            _trainCoursesAppService = trainCoursesAppService;
+            _evaluationsAppService = evaluationsAppService;
+            _resourcesAppService = resourcesAppService;
+            _classesAppService = classesAppService;
+            _collectAppService = collectAppService;
+            _praisesAppService = praisesAppService;
+            _liveVideosAppService = liveVideosAppService;
+            _uploadHelper = uploadHelper;
+        }
+
+        #region 课程体系
+        /// <summary>
+        /// 课程体系-课程列表
+        /// </summary>
+        /// <param name="CategoryId"></param>
+        /// <param name="page"></param>
+        /// <param name="pageSize"></param>
+        /// <returns></returns>
+        [HttpGet]
+        public AjaxResponse GetCourseList(int CategoryId, int page, int pageSize = 10)
+        {
+            if (page.GetType() == typeof(int) && CategoryId.GetType() == typeof(int))
+            {
+                if (CategoryId > 0)
+                {
+                    var list = _trainCoursesAppService.GetTrainCourseByCategoryIdInApp(new TrainCourses.Dto.GetTrainCourseByCategoryIdInAppInput()
+                    {
+                        MaxResultCount = pageSize,
+                        PageIndex = page,
+                        Sorting = "Id DESC",
+                        CategoryId = CategoryId
+                    });
+                    List<GetCourseListOutput> output = new List<GetCourseListOutput>();
+                    foreach (var l in list.Items)
+                    {
+                        GetCourseListOutput o = new GetCourseListOutput();
+                        o.id = l.Id;
+                        o.title = l.Title;
+                        o.summary = l.Summary==null?"":l.Summary;
+                        o.fileUrl = l.Thumb == null ? "" : HandelImage.SImage(l.Thumb, 200, 400);
+                        output.Add(o);
+                    }
+                    return new AjaxResponse
+                    {
+                        Result = ToBase64(output)
+                    };
+                }
+                else
+                {
+                    throw new UserFriendlyException("对不起,CourseId不存在！");
+                }
+            }
+            else
+            {
+                throw new UserFriendlyException("对不起,参数类型存在错误！");
+            }
+        }
+        /// <summary>
+        /// 课程体系-列表
+        /// </summary>
+        /// <param name="page"></param>
+        /// <param name="pageSize"></param>
+        /// <returns></returns>
+        [HttpGet]
+        public AjaxResponse GetCourseCategoryList(int page, int pageSize = 10)
+        {
+            if (page.GetType() == typeof(int))
+            {
+                var output = _trainCoursesAppService.GetCourseCategoryListInApp(new TrainCourses.Dto.GetCourseCategoryListInAppInput()
+                {
+                    MaxResultCount = pageSize,
+                    PageIndex = page,
+                    Sorting = "Id DESC"
+                });
+                return new AjaxResponse
+                {
+                    Result = ToBase64(output.Items)
+                };
+            }
+            else
+            {
+                throw new UserFriendlyException("对不起,参数类型存在错误！");
+            }
+        }
+        /// <summary>
+        /// 课程体系-课程分类名字
+        /// </summary>
+        /// <returns></returns>
+        [HttpGet]
+        public AjaxResponse GetMaxCategoryTitle()
+        {
+            var output = _trainCoursesAppService.GetTrainCourseCategoryForFather();
+            if (output != null && output.Items.Count() > 0)
+            {
+                var CategoryList = output.Items.MapTo<IList<CategoryOutput>>();
+                foreach (var i in CategoryList)
+                {
+                    i.categoryId = i.id;
+                }
+                return new AjaxResponse
+                {
+                    Result = ToBase64(CategoryList)
+                };
+            }
+            else
+            {
+                throw new UserFriendlyException("对不起，一级分类名字不存在！");
+            }
+        }
+        /// <summary>
+        /// 课程体系-二级分类课程列表页面
+        /// </summary>
+        /// <param name="categoryId"></param>
+        /// <returns></returns>
+        [HttpGet]
+        public AjaxResponse GetChildCategoryList(int categoryId)
+        {
+            if (categoryId.GetType() == typeof(int))
+            {
+                var output = _trainCoursesAppService.GetChildCategoryList(new TrainCourses.Dto.GetChildCategoryListInput()
+                {
+                    CategoryId = categoryId
+                });
+                return new AjaxResponse
+                {
+                    Result = ToBase64(output.Items)
+                };
+            }
+            else
+            {
+                throw new UserFriendlyException("对不起,参数类型存在错误！");
+            }
+        }
+        #endregion
+
+        #region 课程详情
+        /// <summary>
+        /// 课程详情-基本信息和简介
+        /// </summary>
+        /// <param name="CourseId"></param>
+        /// <returns></returns>
+        [HttpGet]
+        public async Task<AjaxResponse> GetDetail(int CourseId)
+        {
+            if (CourseId.GetType() == typeof(int))
+            {
+                if (CourseId > 0)
+                {
+            
+                    var dto = _trainCoursesAppService.GetTrainCourse(CourseId);
+                    //记录浏览次数
+                    int _BrowseNum = dto.TrainCourseAnalysis.BrowseNum + 1;
+                    await _trainCoursesAppService.UpdateTrainCourseAnalysis(new TrainCourseAnalysisDto()
+                    {
+                        Id = dto.TrainCourseAnalysisId,
+                        BrowseNum = _BrowseNum,
+                        PeriodNum = -1,
+                        Rating = -1,
+                        RatingNum = -1,
+                        StudentNum = -1
+                    });
+                    //详情数据
+                    TrainCourseDetailOutput output = new TrainCourseDetailOutput()
+                    {
+                        courseId = dto.Id,
+                        credit = dto.Credit,
+                        schoolName = "同济职业技术培训学校",
+                        periodNum = dto.TrainCourseAnalysis.PeriodNum,
+                        studentNum = dto.TrainCourseAnalysis.StudentNum,
+                        summary = dto.Summary,
+                        thumb = HandelImage.SImage(dto.Thumb, 200, 400),
+                        title = dto.Title,
+                        isJoinClass = _trainCoursesAppService.IsJoinClass(CourseId),
+                        //isPreview = dto.IsPreview,
+                        praiseNum = dto.TrainCourseAnalysis.PraiseNum,
+                        isCollect = _collectAppService.GetIsCollect(new Collects.Dto.GetIsCollectInput()
+                        {
+                            CourseId = CourseId
+                        }),
+                        isPraise = _praisesAppService.GetIsPraises(new Praises.Dto.GetIsPraisesInput()
+                        {
+                            CourseId = CourseId
+                        }),
+                        browseNum = dto.TrainCourseAnalysis.BrowseNum
+                    };
+                    return new AjaxResponse
+                    {
+                        Result = ToBase64(output)
+                    };
+                }
+                else
+                {
+                    throw new UserFriendlyException("对不起,CourseId必须大于0！");
+                }
+            }
+            else
+            {
+                throw new UserFriendlyException("对不起,参数类型存在错误！");
+            }
+        }
+        /// <summary>
+        /// 课程详情-目录
+        /// </summary>
+        /// <param name="CourseId"></param>
+        /// <returns></returns>
+        [HttpGet]
+        public AjaxResponse GetDetailSection(int CourseId)
+        {
+            if (CourseId.GetType() == typeof(int))
+            {
+                if (CourseId > 0)
+                {
+                    var output = _trainCoursesAppService.GetTrainCourse(CourseId);
+                    List<SectionsOutput> models = new List<SectionsOutput>();
+                    foreach(var s in output.CourseSections)
+                    {
+                        SectionsOutput SectionModel = new SectionsOutput();
+                        SectionModel.sectionId = s.Id;
+                        SectionModel.title = s.Title;
+                        foreach (var p in s.TrainPeriods)
+                        {
+                            PeriodOutput Period = new PeriodOutput();
+                            Period.title = p.Title;
+                            Period.periodId = p.Id;
+                            Period.assetType = p.assetType;
+                            Period.isPreview = p.IsPreview == TrainCoursesUnit.TrainPeriod.IsPreviewType.是 ? 1 : 0;
+                            if (p.assetType == TrainCoursesUnit.TrainPeriod.TrainAssetType.线上课时)
+                            {
+                                if (p.Resource != null)
+                                {
+                                    Period.fileUrl = _uploadHelper.GeneratePresignedUrl(p.Resource.FileUrl);
+                                    double fileSizeMb = p.Resource.FileSize;
+                                    string fileSizeType = "B";
+                                    if (p.Resource.FileSize > 1024)
+                                    {
+                                        fileSizeMb = p.Resource.FileSize / 1024;
+                                        fileSizeType = "KB";
+                                        if (fileSizeMb > 1024)
+                                        {
+                                            fileSizeMb = fileSizeMb / 1024;
+                                            fileSizeType = "MB";
+                                        }
+                                    }
+                                 
+                                    Period.fileSize = ((int)fileSizeMb).ToString()+ fileSizeType;
+                                    Period.fileCategory = p.Resource.FileCategory;
+                                    if (p.Resource.FileExtension.LastIndexOf(".") > -1)
+                                        Period.fileExtension = p.Resource.FileExtension.Replace(".", "");
+                                    else
+                                        Period.fileExtension = "";
+                                }
+                                else
+                                {
+                                    Period.fileUrl = "";
+                                    Period.fileSize = "";
+                                    Period.fileCategory = FileCategory.其他;
+                                    Period.fileExtension = "";
+                                }
+                            }
+                            else if (p.assetType == TrainCoursesUnit.TrainPeriod.TrainAssetType.直播课时)
+                            {
+                                Period.fileUrl = "";
+                                Period.fileSize = "";
+                                Period.fileCategory = FileCategory.其他;
+                                Period.fileExtension = "";
+
+                                var livevideos = _liveVideosAppService.GetByPeriodId(p.Id);
+                                if (livevideos != null)
+                                {
+                                    Period.time = livevideos.StartTime.ToString("yyyy-MM-dd") + " " +
+                                                  livevideos.StartTime.ToString("HH:mm") + "-" +
+                                                  livevideos.EndTime.ToString("HH:mm");
+                                }
+                            }
+                            else
+                            {
+                                Period.fileUrl = "";
+                                Period.fileSize = "";
+                                Period.fileCategory = FileCategory.其他;
+                                Period.fileExtension = "";
+                            }
+                            SectionModel.trainPeriods.Add(Period);
+                        }
+                        models.Add(SectionModel);
+                    }
+                    return new AjaxResponse
+                    {
+                        Result = ToBase64(models)
+                    };
+                }
+                else
+                {
+                    throw new UserFriendlyException("对不起,CourseId必须大于0！");
+                }
+            }
+            else
+            {
+                throw new UserFriendlyException("对不起,参数类型存在错误！");
+            }
+        }
+        /// <summary>
+        /// 直播页面信息
+        /// </summary>
+        /// <param name="PeriodId"></param>
+        /// <returns></returns>
+        [HttpGet]
+        public async Task<AjaxResponse> GetDetailPeriod(int PeriodId)
+        {
+            int res = -1;
+            string add = string.Empty;
+            var livevideos = _liveVideosAppService.GetByPeriodId(PeriodId);
+            if (livevideos != null)
+            {
+                res = await _liveVideosAppService.GetLiveStreamsStatus(livevideos.Id); //-1:直播不存在 0:未直播 1：直播推流中 2：直播结束 3：直播未推流  4:直播被禁用
+                add = livevideos.LiveUrl;
+            }
+            return new AjaxResponse
+            {
+                Result = ToBase64(new LiveDetailOutput() {status = res, playAddress = add})
+            };
+        }
+
+        /// <summary>
+        /// 课程详情-相关班级
+        /// </summary>
+        /// <param name="id"></param>
+        /// <returns></returns>
+        [HttpGet]
+        public AjaxResponse GetRelatedClass(int CourseId)
+        {
+            if (CourseId.GetType() == typeof(int))
+            {
+                if (CourseId > 0)
+                {
+                    var output = _classesAppService.GetCoursesAndClassList(new Classes.Dto.GetCoursesAndClassListInput()
+                    {
+                        CourseId = CourseId
+                    });
+                    List<TrainCourseRelatedClassOutput> models = new List<TrainCourseRelatedClassOutput>();
+                    if (output != null)
+                    {
+                        foreach (var item in output.Items)
+                        {
+                            var model = item.Class.MapTo<TrainCourseRelatedClassOutput>();
+                            if (model.summary == null)
+                            {
+                                model.summary = "";
+                            }
+                            model.groupId = item.Class.GroupId;
+                            model.logo = HandelImage.SImage(model.logo, 200, 300);
+                            if (AbpSession.UserId != null)
+                            {
+                                var classAndStudent = _classesAppService.GetClassAndStudentByJoin(new Classes.Dto.GetClassAndStudentByJoinInput()
+                                {
+                                    ClassId = item.Class.Id,
+                                    UserId = AbpSession.UserId,
+                                    status = ClassAndStudentStatus.已加入
+                                });
+                                if (classAndStudent != null)
+                                {
+                                    model.isJoin = true;
+                                }
+                                else
+                                {
+                                    model.isJoin = false;
+                                }
+                            }
+                            else
+                            {
+                                model.isJoin = false;
+                            }
+                            models.Add(model);
+                        }
+                    }
+                    return new AjaxResponse
+                    {
+                        Result = ToBase64(models)
+                    };
+                }
+                else
+                {
+                    throw new UserFriendlyException("对不起,CourseId必须大于0！");
+                }
+            }
+            else
+            {
+                throw new UserFriendlyException("对不起,参数类型存在错误！");
+            }
+        }
+        /// <summary>
+        /// 课程详情-创建收藏  1收藏，0取消收藏
+        /// </summary>
+        /// <param name="CourseId"></param>
+        /// <returns></returns>
+        [HttpPost]
+        [AbpApiAuthorize]
+        public AjaxResponse AddOrCancelCollects(AddCollectsInput input)
+        {
+            if (input.CourseId.GetType() == typeof(int))
+            {
+                if (input.CourseId > 0)
+                {
+                    if (input.Type == 1)
+                    {
+                        var _collect = _collectAppService.CreateTrainCollectByApp(new Collects.Dto.CollectDto()
+                        {
+                            CourseId = input.CourseId,
+                            CreatorUserId = AbpSession.UserId,
+                            CourseType = Utils.EnumHelper.CourseType.培训
+                        });
+                        if (_collect != null)
+                        {
+                            return new AjaxResponse
+                            {
+                                Result = "{Success:'成功！'}"
+                            };
+                        }
+                        else
+                        {
+                            throw new UserFriendlyException("已经收藏！");
+                        }
+                    }
+                    else
+                    {
+                        _collectAppService.DeleteTrainCollectByApp(new Collects.Dto.CollectDto()
+                        {
+                            CourseId = input.CourseId,
+                            CreatorUserId = AbpSession.UserId,
+                            CourseType = Utils.EnumHelper.CourseType.培训
+                        });
+                        return new AjaxResponse
+                        {
+                            Result = "{Success:'成功！'}"
+                        };
+                    }
+                }
+                else
+                {
+                    if (input.CourseId <= 0)
+                    {
+                        throw new UserFriendlyException("对不起,CourseId不存在！");
+                    }
+                    throw new UserFriendlyException("失败！");
+                }
+            }
+            else
+            {
+                throw new UserFriendlyException("对不起,参数类型存在错误！");
+            }
+        }
+        /// <summary>
+        /// 课程详情-点赞
+        /// </summary>
+        /// <param name="CourseId"></param>
+        /// <returns></returns>
+        [HttpPost]
+        [AbpApiAuthorize]
+        public AjaxResponse ClickPraise(ClickPraiseInput input)
+        {
+            if (input.CourseId.GetType() == typeof(int))
+            {
+                if (input.CourseId > 0)
+                {
+                    var _Praise = _praisesAppService.CreatePraiseByApp(new Praises.Dto.PraiseDto()
+                    {
+                        CourseId = input.CourseId,
+                        CreatorUserId = AbpSession.UserId,
+                        CourseType = Utils.EnumHelper.CourseType.培训
+                    });
+                    if (_Praise != null)
+                    {
+                        return new AjaxResponse
+                        {
+                            Result = "{Success:'点赞成功！'}"
+                        };
+                    }
+                    else
+
+                    {
+                        throw new UserFriendlyException("已经点赞！");
+                    }
+                }
+                else
+                {
+                    if (input.CourseId <= 0)
+                    {
+                        throw new UserFriendlyException("对不起,CourseId不存在！");
+                    }
+                    throw new UserFriendlyException("失败！");
+                }
+            }
+            else
+            {
+                throw new UserFriendlyException("对不起,参数类型存在错误！");
+            }
+        }
+        /// <summary>
+        /// 课程详情-分享
+        /// </summary>
+        /// <param name="CourseId"></param>
+        /// <returns></returns>
+        [HttpPost]
+        [AbpApiAuthorize]
+        public AjaxResponse ClickShare(ClickShareInput input)
+        {
+            if (input.CourseId.GetType() == typeof(int))
+            {
+                if (input.CourseId > 0)
+                {
+                    var TrainCourseAnalysisId = _trainCoursesAppService.GetTrainCourse(input.CourseId).TrainCourseAnalysisId;
+                    var _id = _trainCoursesAppService.UpdateTrainCourseAnalysisByShareNum(new TrainCourses.Dto.UpdateTrainCourseAnalysisByShareNumInput()
+                    {
+                        Id = TrainCourseAnalysisId
+                    }).Id;
+                    if (_id > 0)
+                    {
+                        return new AjaxResponse
+                        {
+                            Result = "{Success:'收藏成功！'}"
+                        };
+                    }
+                    else
+                    {
+                        return new AjaxResponse
+                        {
+                            Result = "{Success:'取消成功！'}"
+                        };
+                    }
+                }
+                else
+                {
+                    throw new UserFriendlyException("对不起,CourseId不存在！");
+                }
+            }
+            else
+            {
+                throw new UserFriendlyException("对不起,参数类型存在错误！");
+            }
+        }
+        /// <summary>
+        /// 记录培训课程单元学习记录
+        /// </summary>
+        /// <param name="input"></param>
+        /// <returns></returns>
+        [HttpPost]
+        [AbpApiAuthorize]
+        public AjaxResponse ClickPeriodRecords(ClickPeriodRecordsInput input)
+        {
+            if (input.periodId.GetType() == typeof(int))
+            {
+                var _bool = _trainCoursesAppService.IsPeriodRecord(input.periodId);
+                if (!_bool)
+                {
+                    _trainCoursesAppService.CreatePeriodRecord(new TrainCourses.Dto.PeriodRecordDto()
+                    {
+                        PeriodId = input.periodId,
+                        UserId = (int)AbpSession.UserId
+                    });
+                    return new AjaxResponse
+                    {
+                        Result = "{Success:'成功！'}"
+                    };
+                }
+                else
+                {
+                    throw new UserFriendlyException("已学习过！");
+                }
+            }
+            else
+            {
+                throw new UserFriendlyException("对不起,参数类型存在错误！");
+            }
+        }
+        [HttpPost]
+        [AbpApiAuthorize]
+        public AjaxResponse CompleteCourseUnit(CompleteCourseUnitInput input)
+        {
+            if (input.PeriodId.GetType() == typeof(int) 
+                && input.Status.GetType() == typeof(int)
+                && input.TrainCourseId.GetType() == typeof(int))
+            {
+                _trainCoursesAppService.UpdatePeriodRecordForApp(new UpdatePeriodRecordForAppInput()
+                {
+                    TrainCourseId = input.TrainCourseId,
+                    PeriodId = input.PeriodId,
+                    Status = input.Status == 1 ? TrainCoursesUnit.TrainPeriodRecord.TrainPeriodStatus.完成 : TrainCoursesUnit.TrainPeriodRecord.TrainPeriodStatus.未完成
+                });
+                return new AjaxResponse
+                {
+                    Result = "{Success:'成功！'}"
+                };
+            }
+            else
+            {
+                throw new UserFriendlyException("对不起,参数类型存在错误！");
+            }
+        }
+        #endregion
+
+        #region 个人中心
+
+        [HttpGet]
+        [AbpApiAuthorize]
+        public AjaxResponse MyCourses(int page)
+        {
+            var output = _trainCoursesAppService.GetUserTCourses(new TrainCourses.Dto.GetUserTCoursesInput
+            {
+                MaxResultCount = 10,
+                SkipCount = page * 10,
+                Sorting = "Id desc"
+            }).Items.MapTo<List<MyCoursesOutput>>();
+            foreach (var i in output)
+            {
+                i.thumb = HandelImage.SImage(i.thumb, 100, 200);
+            }
+            return new AjaxResponse
+            {
+                Result = ToBase64(output)
+            };
+        }
+        [HttpGet]
+        [AbpApiAuthorize]
+        public AjaxResponse MyCollectCourses(int page)
+        {
+            var output = _collectAppService.GetUserCollectCourse(new Collects.Dto.GetUserCollectCourseInput
+            {
+                CourseType = Utils.EnumHelper.CourseType.培训,
+                MaxResultCount = 10,
+                SkipCount = page * 10,
+                Sorting = "Id desc"
+            }).Items.MapTo<List<MyCollectCoursesOutput>>();
+            foreach (var i in output)
+            {
+                i.thumb = HandelImage.SImage(i.thumb, 100, 200);
+            }
+            return new AjaxResponse
+            {
+                Result = ToBase64(output)
+            };
+        }
+        #endregion
+    }
+}
